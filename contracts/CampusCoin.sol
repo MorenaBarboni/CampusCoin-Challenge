@@ -3,11 +3,6 @@ pragma solidity ^0.8.20;
 
 import "../@openzeppelin/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
-/**
- * @title CampusCoin
- * @dev An ERC20 token used within a university ecosystem.
- *      Students can earn, spend, and be rewarded with tokens based on their activity levels.
- */
 contract CampusCoin is ERC20 {
 
     // === STATE VARIABLES ===
@@ -31,6 +26,8 @@ contract CampusCoin is ERC20 {
         string name; // Name of the service provider
         string category; // Category of services offered
         bool active; // Whether provider is active
+        uint256 totalRating; // Sum of all ratings received
+        uint256 ratingCount; // Number of ratings received
     }
 
     struct Service {
@@ -43,6 +40,7 @@ contract CampusCoin is ERC20 {
     mapping(address => Student) public students;
     mapping(address => ServiceProvider) public serviceProviders;
     mapping(address => mapping(uint256 => Service)) public services; // provider => (serviceId => Service)
+    mapping(address => mapping(address => bool)) public hasRated; // student => provider => rated or not
 
     // === EVENTS ===
 
@@ -57,6 +55,7 @@ contract CampusCoin is ERC20 {
     event TokensBurned(address indexed from, uint256 amount);
     event ServicePaid(address indexed student, address indexed provider, uint256 amount, uint256 fee, uint256 serviceId);
     event FeePercentageUpdated(uint256 newFeePercentage);
+    event ProviderRated(address indexed student, address indexed provider, uint8 rating);
 
     // === MODIFIERS ===
 
@@ -167,7 +166,9 @@ contract CampusCoin is ERC20 {
         serviceProviders[provider] = ServiceProvider({
             name: name,
             category: category,
-            active: true
+            active: true,
+            totalRating: 0,
+            ratingCount: 0
         });
         emit ServiceProviderAdded(provider, name, category);
     }
@@ -191,14 +192,14 @@ contract CampusCoin is ERC20 {
     function updateServiceProvider(address provider, string calldata newName, string calldata newCategory, bool active) external onlyAdmin {
         require(bytes(serviceProviders[provider].name).length > 0, "Provider not found");
 
-        serviceProviders[provider] = ServiceProvider({
-            name: newName,
-            category: newCategory,
-            active: active
-        });
+        ServiceProvider storage sp = serviceProviders[provider];
+        sp.name = newName;
+        sp.category = newCategory;
+        sp.active = active;
 
         emit ServiceProviderUpdated(provider, newName, newCategory, active);
     }
+
 
     // === SERVICE MANAGEMENT ===
 
@@ -310,6 +311,42 @@ contract CampusCoin is ERC20 {
 
         emit ServicePaid(msg.sender, provider, amountToProvider / UNIT, fee / UNIT, serviceId);
     }
+
+
+    // === PROVIDER REPUTATION SYSTEM ===
+
+    /**
+     * @dev Allows a student to rate a service provider (only once).
+     * @param provider Address of the service provider.
+     * @param rating Rating value between 1 and 5.
+     */
+    function rateProvider(address provider, uint8 rating) external onlyActiveStudent(msg.sender) {
+        require(serviceProviders[provider].active, "Service provider not active");
+        require(!hasRated[msg.sender][provider], "You have already rated this provider");
+        require(rating >= 1 && rating <= 5, "Rating must be between 1 and 5");
+
+        hasRated[msg.sender][provider] = true;
+        serviceProviders[provider].totalRating += rating;
+        serviceProviders[provider].ratingCount += 1;
+
+        emit ProviderRated(msg.sender, provider, rating);
+    }
+
+    /**
+     * @dev Returns the average rating and total number of ratings for a provider.
+     * @param provider Address of the service provider.
+     * @return averageRating Average rating value.
+     * @return numberOfRatings Total number of ratings received.
+     */
+    function getProviderAverageRating(address provider) external view returns (uint256 averageRating, uint256 numberOfRatings) {
+        ServiceProvider memory sp = serviceProviders[provider];
+        if (sp.ratingCount == 0) {
+            return (0, 0);
+        }
+        averageRating = sp.totalRating / sp.ratingCount;
+        numberOfRatings = sp.ratingCount;
+    }
+
 
     // === INTERNAL FUNCTIONS ===
     /**
