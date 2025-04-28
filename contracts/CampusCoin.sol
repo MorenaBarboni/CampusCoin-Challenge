@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import "../@openzeppelin/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-
 /**
  * @title CampusCoin
  * @dev A custom ERC20 token for campus ecosystems, allowing students to purchase services from approved providers.
@@ -35,7 +34,7 @@ contract CampusCoin is ERC20 {
     }
 
     mapping(address => ServiceProvider) public serviceProviders;
-    mapping(address => mapping(bytes32 => Service)) public services;
+    mapping(address => mapping(uint256 => Service)) public services;
 
     uint256 public feePercentage; // Fee in basis points (1% = 100)
 
@@ -49,7 +48,7 @@ contract CampusCoin is ERC20 {
     event ServiceProviderRemoved(address indexed provider);
     event TokensMinted(address indexed to, uint256 amount);
     event TokensBurned(address indexed from, uint256 amount);
-    event ServicePaid(address indexed student, address indexed provider, uint256 amount, uint256 fee, bytes32 serviceId);
+    event ServicePaid(address indexed student, address indexed provider, uint256 amount, uint256 fee, uint256 serviceId);
     event FeePercentageUpdated(uint256 newFeePercentage);
 
     // === ACCESS CONTROL MODIFIERS ===
@@ -232,15 +231,15 @@ contract CampusCoin is ERC20 {
      * @param name Name of the service.
      * @param price Price of the service.
      */
-    function addService(bytes32 serviceId, string calldata name, uint256 price) external onlyActiveProvider {
+     function addService(uint256 serviceId, string calldata name, uint256 price) external onlyActiveProvider {
         services[msg.sender][serviceId] = Service(name, price, 0, true);
     }
-
-    /**
+ 
+   /**
      * @dev Marks a service as inactive.
      * @param serviceId Unique service identifier.
      */
-    function removeService(bytes32 serviceId) external onlyActiveProvider {
+    function removeService(uint256 serviceId) external onlyActiveProvider {
         services[msg.sender][serviceId].active = false;
     }
 
@@ -251,20 +250,21 @@ contract CampusCoin is ERC20 {
      * @param newPrice New price of the service.
      * @param active New active status.
      */
-    function updateService(bytes32 serviceId, string calldata newName, uint256 newPrice, bool active) external onlyActiveProvider {
+    function updateService(uint256 serviceId, string calldata newName, uint256 newPrice, bool active) external onlyActiveProvider {
         Service storage s = services[msg.sender][serviceId];
         require(bytes(s.name).length > 0, "Service doesn't exist");
         s.name = newName;
         s.price = newPrice;
         s.active = active;
-    }
+    } 
+   
 
     /**
      * @dev Sets a discount on a service.
      * @param serviceId Unique service identifier.
      * @param discount Discount percentage (0-100).
      */
-    function setServiceDiscount(bytes32 serviceId, uint256 discount) external onlyActiveProvider {
+    function setServiceDiscount(uint256 serviceId, uint256 discount) external onlyActiveProvider {
         require(discount <= 100, "Invalid discount");
         services[msg.sender][serviceId].discount = discount;
     }
@@ -276,14 +276,13 @@ contract CampusCoin is ERC20 {
      * @param provider Address of the service provider.
      * @param serviceId Unique service identifier.
      */
-    function payForService(address provider, bytes32 serviceId) external onlyActiveStudent(msg.sender) {
+    function payForService(address provider, uint256 serviceId) external onlyActiveStudent(msg.sender) {
         require(serviceProviders[provider].active, "Inactive provider");
-
         Service memory s = services[provider][serviceId];
         require(s.active, "Service not available");
 
         uint256 discountedPrice = s.price - (s.price * s.discount / 100);
-        uint256 fee = discountedPrice / 100; // 1%
+        uint256 fee = discountedPrice / 100;
         uint256 amountAfterFee = discountedPrice - fee;
 
         _transfer(msg.sender, university, fee);
