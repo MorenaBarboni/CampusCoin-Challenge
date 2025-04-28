@@ -3,6 +3,4 @@ cache
 coverage
 node_modules
 coverage.json
-sumo
-sumo-config.js
 
