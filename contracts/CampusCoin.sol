@@ -5,43 +5,47 @@ import "../@openzeppelin/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol"
 
 /**
  * @title CampusCoin
- * @dev A custom ERC20 token for campus ecosystems, allowing students to purchase services from approved providers.
+ * @dev An ERC20 token used within a university ecosystem.
+ *      Students can earn, spend, and be rewarded with tokens based on their activity levels.
  */
 contract CampusCoin is ERC20 {
-    address public admin;
-    address public university;
 
-    uint256 public constant UNIT = 10 ** 18;
+    // === STATE VARIABLES ===
+
+    address public admin; // Address of the administrator (deployer)
+    address public university; // Address representing the university (for fee collection)
+
+    uint256 public constant UNIT = 10 ** 18; // Token unit, representing 1 CampusCoin
+
+    uint256 public feePercentage; // Platform fee charged during service payments (in basis points)
+
+    enum StudentTier { Bronze, Silver, Gold } // Different reward tiers for students
 
     struct Student {
-        bool active;
-        uint256 totalSpent;
-        StudentTier tier;
+        bool active; // Whether the student is currently registered
+        uint256 totalSpent; // Total tokens spent by student
+        StudentTier tier; // Current tier of the student
     }
 
-    mapping(address => Student) public students;
-
-    enum StudentTier { Bronze, Silver, Gold }
-
     struct ServiceProvider {
-        string name;
-        string category;
-        bool active;
+        string name; // Name of the service provider
+        string category; // Category of services offered
+        bool active; // Whether provider is active
     }
 
     struct Service {
-        string name;
-        uint256 price; // Price in full tokens (with UNIT scaling)
-        uint256 discount; // 0-100%
-        bool active;
+        string name; // Name of the service
+        uint256 price; // Price in tokens (scaled by UNIT)
+        uint256 discount; // Discount in percentage (0-100)
+        bool active; // Whether the service is active
     }
 
+    mapping(address => Student) public students;
     mapping(address => ServiceProvider) public serviceProviders;
-    mapping(address => mapping(uint256 => Service)) public services;
-
-    uint256 public feePercentage; // Fee in basis points (1% = 100)
+    mapping(address => mapping(uint256 => Service)) public services; // provider => (serviceId => Service)
 
     // === EVENTS ===
+
     event AirdropExecuted(address indexed student, uint256 amount);
     event StudentAdded(address indexed student);
     event StudentRemoved(address indexed student);
@@ -54,13 +58,13 @@ contract CampusCoin is ERC20 {
     event ServicePaid(address indexed student, address indexed provider, uint256 amount, uint256 fee, uint256 serviceId);
     event FeePercentageUpdated(uint256 newFeePercentage);
 
-    // === ACCESS CONTROL MODIFIERS ===
+    // === MODIFIERS ===
 
     /**
      * @dev Restricts function to admin only.
      */
     modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin can call this");
+        require(msg.sender == admin, "Only admin can call this function");
         _;
     }
 
@@ -68,7 +72,7 @@ contract CampusCoin is ERC20 {
      * @dev Restricts function to active service providers only.
      */
     modifier onlyActiveProvider() {
-        require(serviceProviders[msg.sender].active, "Only active providers");
+        require(serviceProviders[msg.sender].active, "Only active providers allowed");
         _;
     }
 
@@ -90,19 +94,20 @@ contract CampusCoin is ERC20 {
     constructor(address _university) ERC20("CampusCoin", "CC") {
         admin = msg.sender;
         university = _university;
-        _mint(msg.sender, 3000 * UNIT);
-        feePercentage = 100; // 1%
+        _mint(msg.sender, 3000 * UNIT); // Initial mint to admin
+        feePercentage = 100; // Default 1% fee (100 basis points)
     }
 
-    // === MINTING, BURNING, AND TRANSFERRING TOKENS ===
+    // === TOKEN MANAGEMENT ===
 
-    /**
+     /**
      * @dev Mints tokens to a student's account.
      * @param to Address to receive tokens.
      * @param amount Amount of tokens to mint.
      */
-    function mint(address to, uint256 amount) public onlyAdmin onlyActiveStudent(to) {
-        _mint(to, amount * UNIT);
+     function mint(address to, uint256 amount) public onlyAdmin onlyActiveStudent(to) {
+        uint256 scaledAmount = amount * UNIT;
+        _mint(to, scaledAmount);
         emit TokensMinted(to, amount);
     }
 
@@ -111,7 +116,8 @@ contract CampusCoin is ERC20 {
      * @param amount Amount of tokens to burn.
      */
     function burn(uint256 amount) public {
-        _burn(msg.sender, amount * UNIT);
+        uint256 scaledAmount = amount * UNIT;
+        _burn(msg.sender, scaledAmount);
         emit TokensBurned(msg.sender, amount);
     }
 
@@ -121,48 +127,26 @@ contract CampusCoin is ERC20 {
      * @param amount Amount of tokens to transfer.
      */
     function transfer(address to, uint256 amount) public override onlyActiveStudent(to) returns (bool) {
-        return super.transfer(to, amount * UNIT);
-    }
-
-    /**
-     * @dev Airdrops tokens to multiple students based on their tier.
-     * @param recipients List of student addresses.
-     * @param baseAmount Base amount before tier multiplier.
-     */
-    function airdropStudents(address[] calldata recipients, uint256 baseAmount) external onlyAdmin {
-        for (uint256 i = 0; i < recipients.length; i++) {
-            address student = recipients[i];
-            if (students[student].active) {
-                uint256 multiplier = _tierMultiplier(students[student].tier);
-                uint256 amount = (baseAmount * multiplier);
-                _mint(student, amount * UNIT);
-                emit AirdropExecuted(student, amount);
-            }
-        }
-    }
-
-    /**
-     * @dev Returns tier multiplier.
-     * @param tier Student tier.
-     */
-    function _tierMultiplier(StudentTier tier) internal pure returns (uint256) {
-        if (tier == StudentTier.Gold) return 30;
-        else if (tier == StudentTier.Silver) return 20;
-        else return 10;
+        uint256 scaledAmount = amount * UNIT;
+        return super.transfer(to, scaledAmount);
     }
 
     // === STUDENT MANAGEMENT ===
 
-    /**
+     /**
      * @dev Adds a new student to the system.
      * @param student Address of the student.
      */
     function addStudent(address student) external onlyAdmin {
-        students[student] = Student(true, 0, StudentTier.Bronze);
+        students[student] = Student({
+            active: true,
+            totalSpent: 0,
+            tier: StudentTier.Bronze
+        });
         emit StudentAdded(student);
     }
 
-    /**
+     /**
      * @dev Marks a student as inactive.
      * @param student Address of the student.
      */
@@ -180,7 +164,11 @@ contract CampusCoin is ERC20 {
      * @param category Service category.
      */
     function addServiceProvider(address provider, string calldata name, string calldata category) external onlyAdmin {
-        serviceProviders[provider] = ServiceProvider(name, category, true);
+        serviceProviders[provider] = ServiceProvider({
+            name: name,
+            category: category,
+            active: true
+        });
         emit ServiceProviderAdded(provider, name, category);
     }
 
@@ -202,20 +190,14 @@ contract CampusCoin is ERC20 {
      */
     function updateServiceProvider(address provider, string calldata newName, string calldata newCategory, bool active) external onlyAdmin {
         require(bytes(serviceProviders[provider].name).length > 0, "Provider not found");
-        serviceProviders[provider] = ServiceProvider(newName, newCategory, active);
+
+        serviceProviders[provider] = ServiceProvider({
+            name: newName,
+            category: newCategory,
+            active: active
+        });
+
         emit ServiceProviderUpdated(provider, newName, newCategory, active);
-    }
-
-    // === FEE MANAGEMENT ===
-
-    /**
-     * @dev Updates the fee percentage.
-     * @param newFeePercentage New fee in basis points.
-     */
-    function setFeePercentage(uint256 newFeePercentage) external onlyAdmin {
-        require(newFeePercentage <= 1000, "Fee too high");
-        feePercentage = newFeePercentage;
-        emit FeePercentageUpdated(newFeePercentage);
     }
 
     // === SERVICE MANAGEMENT ===
@@ -227,7 +209,12 @@ contract CampusCoin is ERC20 {
      * @param price Price of the service.
      */
     function addService(uint256 serviceId, string calldata name, uint256 price) external onlyActiveProvider {
-        services[msg.sender][serviceId] = Service(name, price * UNIT, 0, true);
+        services[msg.sender][serviceId] = Service({
+            name: name,
+            price: price * UNIT,
+            discount: 0,
+            active: true
+        });
     }
 
     /**
@@ -246,11 +233,13 @@ contract CampusCoin is ERC20 {
      * @param active New active status.
      */
     function updateService(uint256 serviceId, string calldata newName, uint256 newPrice, bool active) external onlyActiveProvider {
-        Service storage s = services[msg.sender][serviceId];
-        require(bytes(s.name).length > 0, "Service doesn't exist");
-        s.name = newName;
-        s.price = newPrice * UNIT;
-        s.active = active;
+        Service storage service = services[msg.sender][serviceId];
+
+        require(bytes(service.name).length > 0, "Service does not exist");
+
+        service.name = newName;
+        service.price = newPrice * UNIT;
+        service.active = active;
     }
 
     /**
@@ -259,36 +248,83 @@ contract CampusCoin is ERC20 {
      * @param discount Discount percentage (0-100).
      */
     function setServiceDiscount(uint256 serviceId, uint256 discount) external onlyActiveProvider {
-        require(discount <= 100, "Invalid discount");
+        require(discount <= 100, "Invalid discount percentage");
         services[msg.sender][serviceId].discount = discount;
     }
 
-    // === PAY FOR SPECIFIC SERVICE ===
+    // === FEE MANAGEMENT ===
+    /**
+     * @dev Updates the fee percentage.
+     * @param newFeePercentage New fee in basis points.
+     */
+    function setFeePercentage(uint256 newFeePercentage) external onlyAdmin {
+        require(newFeePercentage <= 1000, "Fee too high (max 10%)");
+        feePercentage = newFeePercentage;
+        emit FeePercentageUpdated(newFeePercentage);
+    }
 
+    // === AIRDROPS ===
+    /**
+     * @dev Airdrops tokens to multiple students based on their tier.
+     * @param recipients List of student addresses.
+     * @param baseAmount Base amount before tier multiplier.
+     */
+    function airdropStudents(address[] calldata recipients, uint256 baseAmount) external onlyAdmin {
+        uint256 totalRecipients = recipients.length;
+
+        for (uint256 i = 0; i < totalRecipients; i++) {
+            address student = recipients[i];
+
+            if (students[student].active) {
+                uint256 multiplier = _tierMultiplier(students[student].tier);
+                uint256 airdropAmount = baseAmount * multiplier;
+
+                _mint(student, airdropAmount * UNIT);
+                emit AirdropExecuted(student, airdropAmount);
+            }
+        }
+    }
+
+    // === SERVICE PAYMENT ===
     /**
      * @dev Allows a student to pay for a service.
      * @param provider Address of the service provider.
      * @param serviceId Unique service identifier.
      */
     function payForService(address provider, uint256 serviceId) external onlyActiveStudent(msg.sender) {
-        require(serviceProviders[provider].active, "Inactive provider");
-        Service memory s = services[provider][serviceId];
-        require(s.active, "Service not available");
+        require(serviceProviders[provider].active, "Service provider not active");
 
-        uint256 discountedPrice = s.price - (s.price * s.discount / 100);
-        uint256 fee = discountedPrice * feePercentage / 10000;
-        uint256 amountAfterFee = discountedPrice - fee;
+        Service memory service = services[provider][serviceId];
+        require(service.active, "Service not available");
+
+        uint256 discountedPrice = service.price - ((service.price * service.discount) / 100);
+        uint256 fee = (discountedPrice * feePercentage) / 10000;
+        uint256 amountToProvider = discountedPrice - fee;
 
         _transfer(msg.sender, university, fee);
-        _transfer(msg.sender, provider, amountAfterFee);
+        _transfer(msg.sender, provider, amountToProvider);
 
         students[msg.sender].totalSpent += discountedPrice;
+
         _updateStudentTier(msg.sender);
 
-        emit ServicePaid(msg.sender, provider, amountAfterFee / UNIT, fee / UNIT, serviceId);
+        emit ServicePaid(msg.sender, provider, amountToProvider / UNIT, fee / UNIT, serviceId);
     }
 
-    // === INTERNAL TIER MANAGEMENT ===
+    // === INTERNAL FUNCTIONS ===
+    /**
+     * @dev Returns tier multiplier.
+     * @param tier Student tier.
+     */
+    function _tierMultiplier(StudentTier tier) internal pure returns (uint256) {
+        if (tier == StudentTier.Gold) {
+            return 30;
+        } else if (tier == StudentTier.Silver) {
+            return 20;
+        } else {
+            return 10;
+        }
+    }
 
     /**
      * @dev Updates a student's tier based on total spending.
@@ -297,17 +333,21 @@ contract CampusCoin is ERC20 {
     function _updateStudentTier(address student) internal {
         Student storage s = students[student];
 
-        StudentTier currentTier = s.tier;
+        StudentTier previousTier = s.tier;
         StudentTier newTier;
 
         uint256 silverThreshold = 2500 * UNIT;
         uint256 goldThreshold = 5000 * UNIT;
 
-        if (s.totalSpent >= goldThreshold) newTier = StudentTier.Gold;
-        else if (s.totalSpent >= silverThreshold) newTier = StudentTier.Silver;
-        else newTier = StudentTier.Bronze;
+        if (s.totalSpent >= goldThreshold) {
+            newTier = StudentTier.Gold;
+        } else if (s.totalSpent >= silverThreshold) {
+            newTier = StudentTier.Silver;
+        } else {
+            newTier = StudentTier.Bronze;
+        }
 
-        if (newTier != currentTier) {
+        if (newTier != previousTier) {
             s.tier = newTier;
             emit StudentTierUpdated(student, newTier);
         }
