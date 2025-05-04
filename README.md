@@ -3,15 +3,15 @@
 ## Project Structure
 
 * `contracts/`: Default Contract Folder used by HardHat;
-    * `CampusCoin.sol`: Smart Contract Under Test (SCUT)
+    * `CampusCoin.sol`: Smart Contract file
 * `test/`: Default Test Folder used by HardHat;
-    * `CampusCoin.js`: Test File for the Smart Contract
-* `hardhat-config.js`: HardHat configuration File;
-* `sumo-config.js`: SuMo configuration File;
-* `sumo-results/results/`: The result of mutation testing on CampusCoin
-      * `mutations.json`: A json with the generated mutations and their details;
-      * `index.html`: A html report for viewing the mutations
-* `package.json`: Node project metadata;
+    * `CampusCoin.js`: Test file
+* `hardhat-config.js`: HardHat configuration file
+* `sumo-config.js`: SuMo configuration file
+* `sumo-results/results/`: The results of SuMo on CampusCoin
+    * `mutations.json`: Generated mutations with their details and results
+    * `index.html`: A html report for viewing the mutations
+* `package.json`: Node project metadata
 
 ## Prerequisites
 To interact with the project, you must install:
