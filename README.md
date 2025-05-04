@@ -19,7 +19,7 @@ The contract deployer and university representative.
 
 ### 2. **University** 
 It collects service fees.
--Receives a portion of each service payment as a platform fee.
+- Receives a portion of each service payment as a platform fee.
 
 ### 3. **Students** 
 Registered users who can spend CampusCoins and receive rewards.
